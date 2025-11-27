@@ -92,7 +92,6 @@ class ChatApp(App):
         self.user_name = "Anonyme"
 
     def on_mount(self) -> None:
-        """Start the conversation and focus input widget."""
         self.listen()
         self.query_one(Input).focus()
 
@@ -113,20 +112,16 @@ class ChatApp(App):
         for m in self.conversation.subscriber.listen():
             if m["type"] == "message":
                 conversation_box = self.query_one("#conversation_box")
-                self.call_from_thread(
-                    self.add_message_to_ui,
-                    m["data"].decode("utf-8")
+                # On modifie l'UI directement ici
+                await conversation_box.mount(
+                    MessageBox(
+                        m["data"].decode("utf-8"),
+                        "",
+                    )
                 )
-
-    def add_message_to_ui(self, text):
-        conversation_box = self.query_one("#conversation_box")
-        conversation_box.mount(
-            MessageBox(text, "")
-        )
-        conversation_box.scroll_end(animate=True)
+                conversation_box.scroll_end(animate=True)
 
     async def process_conversation(self) -> None:
-        """Process a single question/answer in conversation."""
         message_input = self.query_one("#message_input", Input)
         conversation_box = self.query_one("#conversation_box")
         button = self.query_one("#send_button")
@@ -170,7 +165,6 @@ class ChatApp(App):
         self.toggle_widgets(message_input, button)
 
     def toggle_widgets(self, *widgets: Widget) -> None:
-        """Toggle a list of widgets."""
         for w in widgets:
             w.disabled = not w.disabled
 
