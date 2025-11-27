@@ -1,12 +1,11 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal
 from textual.widget import Widget
 from textual.widgets import Button, Footer, Header, Input, Static
 from textual.message import Message
 from textual import work
 import redis
-import asyncio
 
 
 class Conversation(Widget):
@@ -21,6 +20,15 @@ class Conversation(Widget):
 
     def clear(self):
         self.messages = []
+
+    def change_channel(self, new_channel):
+        if new_channel == self.channel:
+            return False
+
+        self.subscriber.unsubscribe(self.channel)
+        self.channel = new_channel
+        self.subscriber.subscribe(self.channel)
+        return True
 
     def compose(self):
         yield Static("Test")
@@ -61,7 +69,6 @@ class ChatApp(App):
     CSS_PATH = "styles.css"
 
     class Received(Message):
-
         def __init__(self, msg):
             super().__init__()
             self.message = msg
@@ -90,19 +97,15 @@ class ChatApp(App):
         self.query_one(Input).focus()
 
     async def action_clear(self) -> None:
-        """Clear the conversation and reset widgets."""
         self.conversation.clear()
         conversation_box = self.query_one("#conversation_box")
-        await self.conversation.send(str(len(conversation_box.children)))
-        await conversation_box.remove()
-        self.mount(FocusableContainer(id="conversation_box"))
+        await conversation_box.remove_children()
+        await conversation_box.mount(MessageBox("Conversation effacée.", "SYSTEME : "))
 
     async def on_button_pressed(self) -> None:
-        """Process when send was pressed."""
         await self.process_conversation()
 
     async def on_input_submitted(self) -> None:
-        """Process when input was submitted."""
         await self.process_conversation()
 
     @work(exclusive=True, thread=True)
@@ -110,13 +113,17 @@ class ChatApp(App):
         for m in self.conversation.subscriber.listen():
             if m["type"] == "message":
                 conversation_box = self.query_one("#conversation_box")
-                await conversation_box.mount(
-                    MessageBox(
-                        m["data"].decode("utf-8"),
-                        "",
-                    )
+                self.call_from_thread(
+                    self.add_message_to_ui,
+                    m["data"].decode("utf-8")
                 )
-                conversation_box.scroll_end(animate=True)
+
+    def add_message_to_ui(self, text):
+        conversation_box = self.query_one("#conversation_box")
+        conversation_box.mount(
+            MessageBox(text, "")
+        )
+        conversation_box.scroll_end(animate=True)
 
     async def process_conversation(self) -> None:
         """Process a single question/answer in conversation."""
@@ -133,6 +140,22 @@ class ChatApp(App):
                 self.user_name = new_name
                 await conversation_box.mount(MessageBox(f"Pseudo changé en : {self.user_name}", "SYSTÈME : "))
                 conversation_box.scroll_end(animate=True)
+            message_input.value = ""
+            return
+
+        if message_input.value.startswith("/channel "):
+            new_channel = message_input.value.replace("/channel ", "").strip()
+            if new_channel:
+                changed = self.conversation.change_channel(new_channel)
+                if changed:
+                    await conversation_box.mount(
+                        MessageBox(f"Vous avez rejoint le canal : {new_channel}", "SYSTÈME : ")
+                    )
+                else:
+                    await conversation_box.mount(
+                        MessageBox(f"Vous êtes déjà sur le canal : {new_channel}", "SYSTÈME : ")
+                    )
+                conversation_box.scroll_end(animate=True)
 
             message_input.value = ""
             return
@@ -140,7 +163,7 @@ class ChatApp(App):
         self.toggle_widgets(message_input, button)
 
         with message_input.prevent(Input.Changed):
-            full_message = f"{self.user_name} : {message_input.value}"
+            full_message = f"[{self.conversation.channel}] {self.user_name} : {message_input.value}"
             await self.conversation.send(full_message)
             message_input.value = ""
 
