@@ -202,27 +202,41 @@ class ChatApp(App):
                             await conversation_box.mount(MessageBox(f"Déjà connecté sur : {arg}", "SYSTÈME : "))
 
                 case "/weather":
-                    cached_weather = self.conversation.redis_client.get("weather_paris")
+                    city = arg if arg else "Paris"
+                    weather_key = f"weather_{city.lower()}"
+                    coords_key = f"coords_{city.lower()}"
+
+                    cached_weather = self.conversation.redis_client.get(weather_key)
 
                     if cached_weather:
                         await conversation_box.mount(
-                            MessageBox(f"{cached_weather.decode('utf-8')}", "BOT : ")
+                            MessageBox(cached_weather.decode('utf-8'), "CACHE : ")
                         )
                     else:
-                            url = "https://api.open-meteo.com/v1/forecast?latitude=48.83692&longitude=2.32612&daily=temperature_2m_mean"
-                            response = requests.get(url)
-                            if response.status_code == 200:
-                                data = response.json()
-                                temp = data["daily"]["temperature_2m_mean"][0]
-                                date = data["daily"]["time"][0]
+                        cached_coords = self.conversation.redis_client.get(coords_key)
 
-                                weather_msg = f" {date} -- {temp}°C"
+                        if cached_coords:
+                            lat, lon = cached_coords.decode("utf-8").split(",")
+                        else:
+                            url_geo = f"https://nominatim.openstreetmap.org/search?q={city}&format=json&limit=1"
+                            headers = {"User-Agent": "DockerChat/1.0"}
 
-                                self.conversation.redis_client.set("weather_paris", weather_msg, ex=3600)
+                            data_geo = requests.get(url_geo, headers=headers).json()
+                            lat = data_geo[0]["lat"]
+                            lon = data_geo[0]["lon"]
 
-                                await conversation_box.mount(
-                                    MessageBox(f"{weather_msg} ", "MÉTÉO : ")
-                                )
+                            self.conversation.redis_client.set(coords_key, f"{lat},{lon}")
+
+                        url_weather = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_mean"
+
+                        data = requests.get(url_weather).json()
+                        temp = data["daily"]["temperature_2m_mean"][0]
+                        date = data["daily"]["time"][0]
+
+                        weather_msg = f"Météo à {city} ({date}) : {temp}°C"
+
+                        self.conversation.redis_client.set(weather_key, weather_msg, ex=3600)
+                        await conversation_box.mount(MessageBox(weather_msg, "MÉTÉO : "))
 
                 case _:
                     await conversation_box.mount(MessageBox(f"Commande inconnue : {command}", "ERREUR : "))
