@@ -145,59 +145,50 @@ class ChatApp(App):
         conversation_box = self.query_one("#conversation_box")
         button = self.query_one("#send_button")
 
-        if message_input.value == "":
+        user_text = message_input.value.strip()
+        if user_text == "":
             return
 
-        if message_input.value.startswith("/username "):
-            new_name = message_input.value.replace("/username ", "").strip()
-            if new_name:
-                self.user_name = new_name
-                await conversation_box.mount(MessageBox(f"Pseudo changé en : {self.user_name}", "SYSTÈME : "))
-                conversation_box.scroll_end(animate=True)
-            message_input.value = ""
-            return
+        message_input.value = ""
 
-        if message_input.value.startswith("/channel "):
-            new_channel = message_input.value.replace("/channel ", "").strip()
-            if new_channel:
-                changed = self.conversation.change_channel(new_channel)
-                if changed:
-                    await conversation_box.mount(
-                        MessageBox(f"Vous avez rejoint le canal : {new_channel}", "SYSTÈME : ")
-                    )
-                else:
-                    await conversation_box.mount(
-                        MessageBox(f"Vous êtes déjà sur le canal : {new_channel}", "SYSTÈME : ")
-                    )
-                conversation_box.scroll_end(animate=True)
+        if user_text.startswith("/"):
+            parts = user_text.split(" ", 1)
+            command = parts[0]
+            arg = parts[1].strip() if len(parts) > 1 else ""
 
-            message_input.value = ""
-            return
+            match command:
+                case "/username":
+                    if arg:
+                        self.user_name = arg
+                        await conversation_box.mount(MessageBox(f"Pseudo changé en : {self.user_name}", "SYSTÈME : "))
 
-        if message_input.value.startswith("/server "):
-            new_server = message_input.value.replace("/server ", "").strip()
-            if new_server:
-                changed = self.conversation.change_server(new_server)
-                if changed:
-                    await conversation_box.mount(
-                        MessageBox(f"Changement de serveur vers : {new_server}", "SYSTÈME : ")
-                    )
-                    self.listen()
-                else:
-                    await conversation_box.mount(
-                        MessageBox(f"Déjà connecté sur le serveur : {new_server}", "SYSTÈME : ")
-                    )
-                conversation_box.scroll_end(animate=True)
+                case "/channel":
+                    if arg:
+                        changed = self.conversation.change_channel(arg)
+                        status = "Vous avez rejoint" if changed else "Vous êtes déjà sur"
+                        await conversation_box.mount(MessageBox(f"{status} le canal : {arg}", "SYSTÈME : "))
 
-            message_input.value = ""
+                case "/server":
+                    if arg:
+                        changed = self.conversation.change_server(arg)
+                        if changed:
+                            await conversation_box.mount(
+                                MessageBox(f"Changement de serveur vers : {arg}", "SYSTÈME : "))
+                            self.listen()
+                        else:
+                            await conversation_box.mount(MessageBox(f"Déjà connecté sur : {arg}", "SYSTÈME : "))
+
+                case _:
+                    await conversation_box.mount(MessageBox(f"Commande inconnue : {command}", "ERREUR : "))
+
+            conversation_box.scroll_end(animate=True)
             return
 
         self.toggle_widgets(message_input, button)
 
         with message_input.prevent(Input.Changed):
-            full_message = f"[{self.conversation.channel}] {self.user_name} : {message_input.value}"
+            full_message = f"[{self.conversation.channel}] {self.user_name} : {user_text}"
             await self.conversation.send(full_message)
-            message_input.value = ""
 
         self.toggle_widgets(message_input, button)
 
