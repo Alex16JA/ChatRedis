@@ -13,7 +13,8 @@ class Conversation(Widget):
     def __init__(self):
         super().__init__()
         self.messages = []
-        self.redis_client = redis.StrictRedis(host="localhost", port=6379, db=0)
+        self.host = "localhost"
+        self.redis_client = redis.StrictRedis(host=self.host, port=6379, db=0)
         self.channel = "canal1"
         self.subscriber = self.redis_client.pubsub()
         self.subscriber.subscribe(self.channel)
@@ -30,11 +31,29 @@ class Conversation(Widget):
         self.subscriber.subscribe(self.channel)
         return True
 
+    def change_server(self, new_host):
+        if new_host == self.host:
+            return False
+        try:
+            self.subscriber.unsubscribe()
+            self.redis_client.close()
+        except:
+            pass
+
+        self.host = new_host
+        self.redis_client = redis.StrictRedis(host=self.host, port=6379, db=0)
+        self.subscriber = self.redis_client.pubsub()
+        self.subscriber.subscribe(self.channel)
+        return True
+
     def compose(self):
         yield Static("Test")
 
     async def send(self, message):
-        self.redis_client.publish(self.channel, message)
+        try:
+            self.redis_client.publish(self.channel, message)
+        except:
+            pass
         return message
 
 
@@ -149,6 +168,24 @@ class ChatApp(App):
                 else:
                     await conversation_box.mount(
                         MessageBox(f"Vous êtes déjà sur le canal : {new_channel}", "SYSTÈME : ")
+                    )
+                conversation_box.scroll_end(animate=True)
+
+            message_input.value = ""
+            return
+
+        if message_input.value.startswith("/server "):
+            new_server = message_input.value.replace("/server ", "").strip()
+            if new_server:
+                changed = self.conversation.change_server(new_server)
+                if changed:
+                    await conversation_box.mount(
+                        MessageBox(f"Changement de serveur vers : {new_server}", "SYSTÈME : ")
+                    )
+                    self.listen()
+                else:
+                    await conversation_box.mount(
+                        MessageBox(f"Déjà connecté sur le serveur : {new_server}", "SYSTÈME : ")
                     )
                 conversation_box.scroll_end(animate=True)
 
