@@ -210,7 +210,7 @@ class ChatApp(App):
                                 temp = data["daily"]["temperature_2m_mean"][0]
                                 date = data["daily"]["time"][0]
 
-                                weather_msg = f"Prévisions {date} : {temp}°C"
+                                weather_msg = f" {date} -- {temp}°C"
 
                                 self.conversation.redis_client.set("weather_paris", weather_msg, ex=3600)
 
