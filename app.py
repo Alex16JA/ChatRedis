@@ -143,16 +143,22 @@ class ChatApp(App):
 
     @work(exclusive=True, thread=True)
     async def listen(self):
-        for m in self.conversation.subscriber.listen():
-            if m["type"] == "message":
-                conversation_box = self.query_one("#conversation_box")
-                await conversation_box.mount(
-                    MessageBox(
+        try:
+            for m in self.conversation.subscriber.listen():
+                if m["type"] == "message":
+                    conversation_box = self.query_one("#conversation_box")
+                    self.call_from_thread(
+                        self.mount_message,
                         m["data"].decode("utf-8"),
-                        "",
+                        ""
                     )
-                )
-                conversation_box.scroll_end(animate=True)
+        except Exception:
+            pass
+
+    def mount_message(self, message, role):
+        conversation_box = self.query_one("#conversation_box")
+        conversation_box.mount(MessageBox(message, role))
+        conversation_box.scroll_end(animate=True)
 
     async def process_conversation(self) -> None:
         message_input = self.query_one("#message_input", Input)
