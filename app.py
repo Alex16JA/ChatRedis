@@ -8,6 +8,14 @@ from textual import work
 import redis
 
 
+class StatusBar(Static):
+    def __init__(self, host: str, channel: str, *args, **kwargs):
+        text = f"{channel} ({host})"
+        super().__init__(text, *args, **kwargs)
+
+    def update_status(self, host: str, channel: str) -> None:
+        self.update(f"{channel} ({host})")
+
 class Conversation(Widget):
 
     def __init__(self):
@@ -34,6 +42,7 @@ class Conversation(Widget):
     def change_server(self, new_host):
         if new_host == self.host:
             return False
+
         try:
             self.subscriber.unsubscribe()
             self.redis_client.close()
@@ -57,11 +66,11 @@ class Conversation(Widget):
         return message
 
 
-class FocusableContainer(Container, can_focus=True):  # type: ignore[call-arg]
+class FocusableContainer(Container, can_focus=True):
     """Focusable container widget."""
 
 
-class MessageBox(Widget, can_focus=True):  # type: ignore[call-arg]
+class MessageBox(Widget, can_focus=True):
     """Box widget for the message."""
 
     def __init__(self, text: str, role: str) -> None:
@@ -95,6 +104,11 @@ class ChatApp(App):
     def compose(self) -> ComposeResult:
         """Yield components."""
         yield Header()
+        yield StatusBar(
+            self.conversation.host,
+            self.conversation.channel,
+            id="status_bar",
+        )
         with FocusableContainer(id="conversation_box"):
             yield MessageBox(
                 "Super application de chat!!",
@@ -131,7 +145,6 @@ class ChatApp(App):
         for m in self.conversation.subscriber.listen():
             if m["type"] == "message":
                 conversation_box = self.query_one("#conversation_box")
-                # On modifie l'UI directement ici
                 await conversation_box.mount(
                     MessageBox(
                         m["data"].decode("utf-8"),
@@ -144,6 +157,7 @@ class ChatApp(App):
         message_input = self.query_one("#message_input", Input)
         conversation_box = self.query_one("#conversation_box")
         button = self.query_one("#send_button")
+        status_bar = self.query_one(StatusBar)
 
         user_text = message_input.value.strip()
         if user_text == "":
@@ -167,6 +181,7 @@ class ChatApp(App):
                         changed = self.conversation.change_channel(arg)
                         status = "Vous avez rejoint" if changed else "Vous êtes déjà sur"
                         await conversation_box.mount(MessageBox(f"{status} le canal : {arg}", "SYSTÈME : "))
+                        status_bar.update_status(self.conversation.host, self.conversation.channel)
 
                 case "/server":
                     if arg:
@@ -174,6 +189,7 @@ class ChatApp(App):
                         if changed:
                             await conversation_box.mount(
                                 MessageBox(f"Changement de serveur vers : {arg}", "SYSTÈME : "))
+                            status_bar.update_status(self.conversation.host, self.conversation.channel)
                             self.listen()
                         else:
                             await conversation_box.mount(MessageBox(f"Déjà connecté sur : {arg}", "SYSTÈME : "))

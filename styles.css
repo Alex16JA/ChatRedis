@@ -46,3 +46,9 @@ MessageBox {
 #send_button {
     width: auto;
 }
+
+#status_bar {
+    text-align: center;
+    background: #d04747;
+    color: white;
+}
